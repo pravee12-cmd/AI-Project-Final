@@ -1,0 +1,7 @@
+node_modules/
+.env
+*.db
+*.db-shm
+*.db-wal
+.mongodb-local-collections.json
+dist/*.zip
