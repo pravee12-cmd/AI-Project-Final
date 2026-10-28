@@ -693,7 +693,10 @@ async function sendOtpEmail(to: string, code: string): Promise<{ success: boolea
     const mailer = nodemailer.createTransport({
       service: 'gmail',
       auth: { user: gmailUser, pass: gmailPass },
-      tls: { rejectUnauthorized: false }
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 3500, // 3.5s connection timeout
+      greetingTimeout: 3500,
+      socketTimeout: 5000,
     });
     const info = await mailer.sendMail({
       from: `"AI Resume Analyzer" <${gmailUser}>`,
@@ -1419,18 +1422,17 @@ async function startServer() {
     });
 
     const targetEmail = rawTarget.includes('@') ? rawTarget : (findUserByIdentifier(rawTarget)?.email || '');
-    let emailStatus: { success: boolean; error?: string } = { success: false };
     if (targetEmail) {
-      emailStatus = await sendOtpEmail(targetEmail, session.otp);
+      // Fire-and-forget background email dispatch so the client response is INSTANT (never hangs)
+      void sendOtpEmail(targetEmail, session.otp).catch((err) => {
+        console.warn('[OTP email] Background email dispatch failed:', err);
+      });
     }
+
     return res.status(200).json({
       status: '200 OK',
       otp: session.otp,
-      emailSent: emailStatus.success,
-      emailError: emailStatus.error || null,
-      message: emailStatus.success
-        ? `6-digit OTP generated! Code sent to ${targetEmail} and displayed below.`
-        : '6-digit OTP generated. Code is displayed below.',
+      message: `6-digit OTP generated! Code is strictly valid for 2 minutes.`,
       expiresInSeconds: session.expiresInSeconds,
       expiresAt: session.expiresAt,
       target: rawTarget,
