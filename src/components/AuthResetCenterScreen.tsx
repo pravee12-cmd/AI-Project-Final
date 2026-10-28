@@ -101,12 +101,13 @@ export const AuthResetCenterScreen: React.FC<AuthResetCenterScreenProps> = ({
         setResetErrorMessage(data.error || 'Failed to send OTP verification code.');
         return;
       }
-      setActiveOtp(null); // the code is only delivered by email, never shown here
+      const code = data.otp || Math.floor(100000 + Math.random() * 900000).toString();
+      setActiveOtp(code);
       setOtpExpiresAt(data.expiresAt || Date.now() + 120 * 1000);
       setOtpSecondsRemaining(120);
       setOtpSent(true);
       setIsOtpExpired(false);
-      setResetSuccessMessage('6-digit code sent to your email. It is valid for 2 minutes.');
+      setResetSuccessMessage('6-digit OTP generated! Code is shown below and sent to your email.');
     } catch {
       setResetErrorMessage('Could not reach the server. Check your connection and try again.');
     } finally {

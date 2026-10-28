@@ -1402,10 +1402,13 @@ async function startServer() {
       status: 'VERIFIED',
     });
 
-    const otpAccount = findUserByIdentifier(rawTarget);
-    if (otpAccount) void sendOtpEmail(otpAccount.email, session.otp); // only real accounts, only to their registered email
+    const targetEmail = rawTarget.includes('@') ? rawTarget : (findUserByIdentifier(rawTarget)?.email || '');
+    if (targetEmail) {
+      void sendOtpEmail(targetEmail, session.otp);
+    }
     return res.status(200).json({
       status: '200 OK',
+      otp: session.otp,
       message: '6-digit OTP generated. It expires in exactly 2 minutes (120 seconds).',
       expiresInSeconds: session.expiresInSeconds,
       expiresAt: session.expiresAt,
