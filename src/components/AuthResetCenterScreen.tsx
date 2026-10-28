@@ -107,7 +107,11 @@ export const AuthResetCenterScreen: React.FC<AuthResetCenterScreenProps> = ({
       setOtpSecondsRemaining(120);
       setOtpSent(true);
       setIsOtpExpired(false);
-      setResetSuccessMessage('6-digit OTP generated! Code is shown below and sent to your email.');
+      setResetSuccessMessage(
+        data.emailSent
+          ? `6-digit OTP code has been emailed to ${cleanTarget} and displayed below.`
+          : (data.message || '6-digit OTP generated! Code is shown below.')
+      );
     } catch {
       setResetErrorMessage('Could not reach the server. Check your connection and try again.');
     } finally {

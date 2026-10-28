@@ -668,30 +668,46 @@ function findUserByIdentifier(identifier: string): UserRecord | undefined {
   });
 }
 
-async function sendOtpEmail(to: string, code: string) {
-  if (!to.includes('@')) return;
-  const subject = 'Your AI Resume Analyzer code';
-  const text = `Your password reset code is ${code}. It expires in 2 minutes. If you did not request it, ignore this email.`;
+async function sendOtpEmail(to: string, code: string): Promise<{ success: boolean; error?: string }> {
+  if (!to || !to.includes('@')) return { success: false, error: 'Invalid recipient email' };
+  const subject = `Your AI Resume Analyzer Password Reset Code: ${code}`;
+  const text = `Your verification OTP is: ${code}\n\nIt is strictly valid for 2 minutes (120 seconds).\nIf you did not request this code, please ignore this email.`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+      <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">AI Resume Analyzer</h2>
+      <p style="color: #475569; font-size: 15px;">You requested a password reset code. Use the 6-digit verification code below:</p>
+      <div style="text-align: center; margin: 24px 0; padding: 20px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0284c7; font-family: monospace;">${code}</span>
+      </div>
+      <p style="color: #dc2626; font-size: 13px; font-weight: bold;">⏱ This code expires in exactly 2 minutes (120 seconds).</p>
+      <p style="color: #64748b; font-size: 12px; border-top: 1px solid #f1f5f9; padding-top: 12px; margin-bottom: 0;">If you did not request this password reset, please ignore this email.</p>
+    </div>
+  `;
+
+  const gmailUser = (process.env.GMAIL_USER || 'cloudattendance7@gmail.com').trim();
+  const gmailPass = (process.env.GMAIL_APP_PASSWORD || 'oyia alpo fkwk nyyr').replace(/\s+/g, '').trim();
+
   try {
-    if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-      const nodemailer = await import('nodemailer');
-      const mailer = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '') },
-      });
-      await mailer.sendMail({ from: `AI Resume Analyzer <${process.env.GMAIL_USER}>`, to, subject, text });
-      return;
-    }
-    if (process.env.RESEND_API_KEY) {
-      const r = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: process.env.MAIL_FROM || 'onboarding@resend.dev', to, subject, text }),
-      });
-      if (!r.ok) console.warn('[OTP email] Resend error', r.status);
-    }
+    const nodemailer = await import('nodemailer');
+    console.log(`[OTP email] Dispatching OTP [${code}] to ${to} via Gmail SMTP (${gmailUser})...`);
+    const mailer = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: gmailUser, pass: gmailPass },
+      tls: { rejectUnauthorized: false }
+    });
+    const info = await mailer.sendMail({
+      from: `"AI Resume Analyzer" <${gmailUser}>`,
+      to,
+      subject,
+      text,
+      html,
+    });
+    console.log(`[OTP email] Email successfully delivered to ${to}! Message ID: ${info.messageId}`);
+    return { success: true };
   } catch (e) {
-    console.warn('[OTP email] could not send:', e instanceof Error ? e.message : e);
+    const errMsg = e instanceof Error ? e.message : String(e);
+    console.warn('[OTP email] could not send via Gmail SMTP:', errMsg);
+    return { success: false, error: errMsg };
   }
 }
 
@@ -1370,7 +1386,7 @@ async function startServer() {
   });
 
   // POST /api/v1/auth/otp/send - Generate 6-digit OTP strictly valid for 2 minutes (120 seconds)
-  app.post('/api/v1/auth/otp/send', (req, res) => {
+  app.post('/api/v1/auth/otp/send', async (req, res) => {
     const { identifier, email, contactNumber, name } = req.body;
     const rawTarget = String(identifier || email || contactNumber || '').trim();
 
@@ -1403,13 +1419,18 @@ async function startServer() {
     });
 
     const targetEmail = rawTarget.includes('@') ? rawTarget : (findUserByIdentifier(rawTarget)?.email || '');
+    let emailStatus: { success: boolean; error?: string } = { success: false };
     if (targetEmail) {
-      void sendOtpEmail(targetEmail, session.otp);
+      emailStatus = await sendOtpEmail(targetEmail, session.otp);
     }
     return res.status(200).json({
       status: '200 OK',
       otp: session.otp,
-      message: '6-digit OTP generated. It expires in exactly 2 minutes (120 seconds).',
+      emailSent: emailStatus.success,
+      emailError: emailStatus.error || null,
+      message: emailStatus.success
+        ? `6-digit OTP generated! Code sent to ${targetEmail} and displayed below.`
+        : '6-digit OTP generated. Code is displayed below.',
       expiresInSeconds: session.expiresInSeconds,
       expiresAt: session.expiresAt,
       target: rawTarget,
